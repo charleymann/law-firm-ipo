@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>The Investor's Lens — S-1 Prospectus Exercise</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <!-- ═══════════════════ HEADER ═══════════════════ -->
+  <header id="app-header" class="hidden">
+    <div class="header-inner">
+      <div class="header-left">
+        <h1 class="header-title">The Investor's Lens</h1>
+        <span class="header-divider">|</span>
+        <span class="header-subtitle" id="header-firm-name"></span>
+      </div>
+      <div class="header-right">
+        <button id="btn-save-header" class="btn btn-outline btn-sm" title="Save Progress">
+          <span class="save-icon">&#128190;</span> Save
+        </button>
+      </div>
+    </div>
+    <!-- Progress bar -->
+    <div class="progress-track">
+      <div class="progress-fill" id="progress-fill"></div>
+    </div>
+  </header>
+
+  <!-- ═══════════════════ SIDEBAR ═══════════════════ -->
+  <nav id="sidebar" class="hidden">
+    <button id="sidebar-toggle" class="sidebar-toggle" aria-label="Toggle sidebar">&#9776;</button>
+    <div class="sidebar-inner" id="sidebar-inner">
+      <ul id="sidebar-list" class="sidebar-list"></ul>
+      <div class="sidebar-footer">
+        <button id="btn-start-over" class="btn btn-text btn-sm">Start Over</button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- ═══════════════════ MAIN CONTENT ═══════════════════ -->
+  <main id="main-content">
+
+    <!-- Landing page -->
+    <section id="page-landing" class="page">
+      <div class="landing-container">
+        <div class="landing-brand">
+          <h1 class="landing-title">The Investor's Lens</h1>
+          <p class="landing-tagline">S-1 Prospectus Exercise for Law Firm Owners</p>
+        </div>
+        <p class="landing-desc">
+          Walk through a simulated S-1 prospectus — the document every public company files with the SEC.
+          You'll examine your firm through nine critical lenses that investors use to evaluate a business.
+          No data leaves your browser.
+        </p>
+        <div class="landing-form">
+          <div class="field-group">
+            <label for="input-firm-name">Firm Name</label>
+            <input type="text" id="input-firm-name" placeholder="e.g. Smith & Associates LLP" autocomplete="organization">
+          </div>
+          <div class="field-group">
+            <label for="input-user-name">Your Name</label>
+            <input type="text" id="input-user-name" placeholder="e.g. Jane Smith" autocomplete="name">
+          </div>
+          <button id="btn-begin" class="btn btn-primary btn-lg">Begin Your Prospectus</button>
+        </div>
+        <div id="resume-prompt" class="resume-prompt hidden">
+          <p>Welcome back. You left off on <strong>Module <span id="resume-module-num"></span></strong>.</p>
+          <button id="btn-resume" class="btn btn-gold">Resume Where You Left Off</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Module page (dynamically populated) -->
+    <section id="page-module" class="page hidden">
+      <div class="module-container" id="module-container"></div>
+    </section>
+
+    <!-- Scorecard page -->
+    <section id="page-scorecard" class="page hidden">
+      <div class="module-container" id="scorecard-container"></div>
+    </section>
+
+  </main>
+
+  <!-- ═══════════════════ BOTTOM NAV ═══════════════════ -->
+  <footer id="bottom-nav" class="hidden">
+    <div class="bottom-nav-inner">
+      <button id="btn-back" class="btn btn-outline">&#8592; Back</button>
+      <button id="btn-save-bottom" class="btn btn-outline btn-sm">Save Progress</button>
+      <button id="btn-next" class="btn btn-primary">Next Module &#8594;</button>
+    </div>
+  </footer>
+
+  <!-- ═══════════════════ TOAST ═══════════════════ -->
+  <div id="toast" class="toast hidden"></div>
+
+  <!-- Scripts -->
+  <script src="modules.js"></script>
+  <script src="app.js"></script>
+  <script src="pdf-generator.js"></script>
+</body>
+</html>
