@@ -7,29 +7,62 @@
   "use strict";
 
   // ── Load jsPDF & AutoTable from CDN ──────────────────
-  var jsPDFReady = false;
+  // Use multiple CDN sources for reliability.
 
-  function loadScript(src) {
+  function loadScript(urls) {
+    // Try each URL in sequence until one works
     return new Promise(function (resolve, reject) {
-      // Don't load again if already present
-      var existing = document.querySelector('script[src="' + src + '"]');
-      if (existing) { resolve(); return; }
-      var s = document.createElement("script");
-      s.src = src;
-      s.onload = resolve;
-      s.onerror = reject;
-      document.head.appendChild(s);
+      var index = 0;
+      function tryNext() {
+        if (index >= urls.length) {
+          reject(new Error("Failed to load library from all CDN sources: " + urls.join(", ")));
+          return;
+        }
+        var src = urls[index];
+        index++;
+        var s = document.createElement("script");
+        s.src = src;
+        s.onload = function () { resolve(); };
+        s.onerror = function () {
+          // Remove failed script tag so it doesn't interfere with retries
+          s.remove();
+          tryNext();
+        };
+        document.head.appendChild(s);
+      }
+      tryNext();
     });
   }
 
   function ensureLibraries() {
-    if (jsPDFReady && window.jspdf) return Promise.resolve();
-    return loadScript("https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.2/jspdf.umd.min.js")
+    // If already loaded, skip
+    if (window.jspdf && window.jspdf.jsPDF) return Promise.resolve();
+
+    var jspdfUrls = [
+      "https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js",
+      "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js",
+      "https://unpkg.com/jspdf@2.5.2/dist/jspdf.umd.min.js"
+    ];
+
+    var autotableUrls = [
+      "https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.4/dist/jspdf.plugin.autotable.min.js",
+      "https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.4/jspdf.plugin.autotable.min.js",
+      "https://unpkg.com/jspdf-autotable@3.8.4/dist/jspdf.plugin.autotable.min.js"
+    ];
+
+    return loadScript(jspdfUrls)
       .then(function () {
-        return loadScript("https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js");
+        if (!window.jspdf || !window.jspdf.jsPDF) {
+          throw new Error("jsPDF loaded but window.jspdf.jsPDF not found");
+        }
+        return loadScript(autotableUrls);
       })
       .then(function () {
-        jsPDFReady = true;
+        // Verify autoTable is available
+        var testDoc = new window.jspdf.jsPDF();
+        if (typeof testDoc.autoTable !== "function") {
+          throw new Error("autoTable plugin loaded but not attached to jsPDF");
+        }
       });
   }
 
@@ -45,9 +78,9 @@
 
   // ── Utility: safe text for jsPDF (strip non-Latin chars) ─
   function safeText(str) {
-    if (!str) return "";
-    // Replace common unicode with ASCII equivalents
-    return str
+    if (str === null || str === undefined) return "";
+    var s = String(str);
+    return s
       .replace(/[\u2018\u2019]/g, "'")   // smart single quotes
       .replace(/[\u201C\u201D]/g, '"')   // smart double quotes
       .replace(/\u2014/g, "--")          // em dash
@@ -124,7 +157,8 @@
 
     doc.setFontSize(12);
 
-    modules.forEach(function (mod) {
+    for (var mi = 0; mi < modules.length; mi++) {
+      var mod = modules[mi];
       doc.setFont("helvetica", "bold");
       setColor(doc, "setTextColor", GOLD);
       doc.text("Module " + mod.id, 24, y);
@@ -132,7 +166,7 @@
       setColor(doc, "setTextColor", TEXT_DARK);
       doc.text(safeText(mod.title) + ' -- "' + safeText(mod.subtitle) + '"', 60, y);
       y += 10;
-    });
+    }
 
     // Scorecard entry
     y += 2;
@@ -206,7 +240,9 @@
     y += calloutH + 8;
 
     // Fields
-    mod.fields.forEach(function (field) {
+    for (var fi = 0; fi < mod.fields.length; fi++) {
+      var field = mod.fields[fi];
+
       if (field.type === "textarea-short" || field.type === "textarea-long") {
         y = checkPageBreak(doc, y, 24);
 
@@ -217,11 +253,14 @@
         doc.text(safeText(field.id + " " + field.label), 20, y);
         y += 6;
 
-        // Value
-        var val = safeText(data[field.id]) || "(not completed)";
+        // Value — show placeholder if empty
+        var rawVal = data[field.id];
+        var val = (rawVal !== null && rawVal !== undefined && String(rawVal).trim() !== "")
+          ? safeText(rawVal)
+          : "(not completed)";
         doc.setFontSize(10);
         doc.setFont("helvetica", "normal");
-        setColor(doc, "setTextColor", TEXT_DARK);
+        setColor(doc, "setTextColor", val === "(not completed)" ? TEXT_MUTED : TEXT_DARK);
         var lines = doc.splitTextToSize(val, maxTextW);
         for (var li = 0; li < lines.length; li++) {
           y = checkPageBreak(doc, y, 6);
@@ -240,24 +279,34 @@
         doc.text(safeText(field.id + " " + field.label), 20, y);
         y += 4;
 
-        var tableRows = data[field.id] || field.prefillRows;
-        // Filter out completely empty rows
+        var tableRows = data[field.id];
+        var hasSavedData = Array.isArray(tableRows) && tableRows.length > 0;
+
+        // Use prefill rows as fallback
+        if (!hasSavedData) {
+          tableRows = field.prefillRows;
+        }
+
+        // Safety: ensure tableRows is a valid array
+        if (!Array.isArray(tableRows)) {
+          tableRows = [];
+        }
+
+        // Build safe rows, keeping rows that have at least one non-empty cell
         var filteredRows = [];
         for (var ri = 0; ri < tableRows.length; ri++) {
           var row = tableRows[ri];
+          if (!Array.isArray(row)) continue;
           var hasContent = false;
+          var safeRow = [];
           for (var ci = 0; ci < row.length; ci++) {
-            if (row[ci] && row[ci].toString().trim() !== "") {
+            var cellVal = (row[ci] !== null && row[ci] !== undefined) ? String(row[ci]) : "";
+            safeRow.push(safeText(cellVal));
+            if (cellVal.trim() !== "") {
               hasContent = true;
-              break;
             }
           }
           if (hasContent) {
-            // Sanitize each cell
-            var safeRow = [];
-            for (var si = 0; si < row.length; si++) {
-              safeRow.push(safeText(row[si]));
-            }
             filteredRows.push(safeRow);
           }
         }
@@ -266,7 +315,7 @@
           try {
             doc.autoTable({
               startY: y,
-              head: [field.columns.map(safeText)],
+              head: [field.columns.map(function (c) { return safeText(c); })],
               body: filteredRows,
               margin: { left: 20, right: 20 },
               styles: {
@@ -321,7 +370,7 @@
           if (checked) {
             setColor(doc, "setFillColor", NAVY);
             doc.rect(24, y - 3, 3.5, 3.5, "F");
-            // Checkmark (draw an X inside)
+            // Checkmark lines
             doc.setLineWidth(0.4);
             setColor(doc, "setDrawColor", WHITE);
             doc.line(24.5, y - 2.5, 27, y);
@@ -351,7 +400,7 @@
         }
         y += 6;
       }
-    });
+    }
   }
 
   function addScorecardPage(doc, scorecard, dimensions) {
@@ -367,10 +416,11 @@
 
     // Total score
     var total = 0;
-    var ratings = scorecard.ratings || {};
+    var ratings = (scorecard && scorecard.ratings) ? scorecard.ratings : {};
     var keys = Object.keys(ratings);
     for (var k = 0; k < keys.length; k++) {
-      total += ratings[keys[k]];
+      var ratingVal = parseInt(ratings[keys[k]]) || 0;
+      total += ratingVal;
     }
 
     doc.setFontSize(28);
@@ -386,7 +436,7 @@
 
     for (var di = 0; di < dimensions.length; di++) {
       var dim = dimensions[di];
-      var val = ratings[dim.id] || 0;
+      var val = parseInt(ratings[dim.id]) || 0;
 
       y = checkPageBreak(doc, y, 14);
 
@@ -417,19 +467,19 @@
       y += 12;
     }
 
-    // Ratings summary table as well
+    // Ratings summary table
     y += 4;
     y = checkPageBreak(doc, y, 30);
 
     var tableBody = [];
     for (var ti = 0; ti < dimensions.length; ti++) {
       var d = dimensions[ti];
-      var v = ratings[d.id] || 0;
-      var stars = "";
+      var v = parseInt(ratings[d.id]) || 0;
+      var dots = "";
       for (var si = 0; si < 5; si++) {
-        stars += si < v ? "#" : ".";
+        dots += si < v ? "#" : ".";
       }
-      tableBody.push([d.id + ".", safeText(d.label), stars + "  " + v + "/5"]);
+      tableBody.push([d.id + ".", safeText(d.label), dots + "  " + v + "/5"]);
     }
 
     try {
@@ -469,8 +519,10 @@
     doc.text("3 Most Important Learnings:", 20, y);
     y += 7;
     doc.setFont("helvetica", "normal");
-    setColor(doc, "setTextColor", TEXT_DARK);
-    var r1 = safeText(scorecard.reflection1) || "(not completed)";
+    var r1Raw = (scorecard && scorecard.reflection1) ? scorecard.reflection1 : "";
+    var r1 = safeText(r1Raw);
+    if (!r1 || r1.trim() === "") r1 = "(not completed)";
+    setColor(doc, "setTextColor", r1 === "(not completed)" ? TEXT_MUTED : TEXT_DARK);
     var r1Lines = doc.splitTextToSize(r1, pw - 50);
     for (var r1i = 0; r1i < r1Lines.length; r1i++) {
       y = checkPageBreak(doc, y, 6);
@@ -486,8 +538,10 @@
     doc.text("3 Most Urgent Actions (Next 90 Days):", 20, y);
     y += 7;
     doc.setFont("helvetica", "normal");
-    setColor(doc, "setTextColor", TEXT_DARK);
-    var r2 = safeText(scorecard.reflection2) || "(not completed)";
+    var r2Raw = (scorecard && scorecard.reflection2) ? scorecard.reflection2 : "";
+    var r2 = safeText(r2Raw);
+    if (!r2 || r2.trim() === "") r2 = "(not completed)";
+    setColor(doc, "setTextColor", r2 === "(not completed)" ? TEXT_MUTED : TEXT_DARK);
     var r2Lines = doc.splitTextToSize(r2, pw - 50);
     for (var r2i = 0; r2i < r2Lines.length; r2i++) {
       y = checkPageBreak(doc, y, 6);
@@ -507,42 +561,50 @@
       btn.disabled = true;
     }
 
+    function restoreButton() {
+      if (btn) {
+        btn.textContent = originalText;
+        btn.disabled = false;
+      }
+    }
+
     ensureLibraries()
       .then(function () {
-        var jsPDF = window.jspdf.jsPDF;
-        var doc = new jsPDF({ unit: "mm", format: "letter" });
+        try {
+          var jsPDF = window.jspdf.jsPDF;
+          var doc = new jsPDF({ unit: "mm", format: "letter" });
 
-        // Cover page
-        addCoverPage(doc, state);
+          // Cover page
+          addCoverPage(doc, state);
 
-        // Table of contents
-        addTableOfContents(doc, modules);
+          // Table of contents
+          addTableOfContents(doc, modules);
 
-        // Module pages
-        for (var i = 0; i < modules.length; i++) {
-          addModulePage(doc, modules[i], state.modules[modules[i].id]);
-        }
+          // Module pages
+          for (var i = 0; i < modules.length; i++) {
+            var modData = state.modules ? state.modules[modules[i].id] : undefined;
+            addModulePage(doc, modules[i], modData);
+          }
 
-        // Scorecard
-        addScorecardPage(doc, state.scorecard, dimensions);
+          // Scorecard
+          var scorecard = state.scorecard || { ratings: {}, reflection1: "", reflection2: "" };
+          addScorecardPage(doc, scorecard, dimensions);
 
-        // Save file
-        var filename = (state.meta.firmName || "firm").replace(/[^a-zA-Z0-9]/g, "_");
-        doc.save(filename + "_Prospectus.pdf");
+          // Save file
+          var filename = (state.meta.firmName || "firm").replace(/[^a-zA-Z0-9]/g, "_");
+          doc.save(filename + "_Prospectus.pdf");
 
-        // Restore button
-        if (btn) {
-          btn.textContent = originalText;
-          btn.disabled = false;
+          restoreButton();
+        } catch (genErr) {
+          restoreButton();
+          console.error("PDF generation error:", genErr);
+          alert("An error occurred while generating the PDF.\n\nError: " + genErr.message + "\n\nPlease try again. If the problem persists, try using a different browser.");
         }
       })
-      .catch(function (err) {
-        console.error("PDF generation failed:", err);
-        alert("Could not generate PDF. Please check your internet connection (required to download the PDF library on first use) and try again.\n\nError: " + err.message);
-        if (btn) {
-          btn.textContent = originalText;
-          btn.disabled = false;
-        }
+      .catch(function (loadErr) {
+        restoreButton();
+        console.error("PDF library loading failed:", loadErr);
+        alert("Could not load the PDF library. Please check your internet connection and try again.\n\nError: " + loadErr.message);
       });
   };
 })();
