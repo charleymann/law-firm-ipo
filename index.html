@@ -4,45 +4,84 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>The Investor's Lens — S-1 Prospectus Exercise</title>
+  <meta name="description" content="A private, browser-only self-assessment that walks law firm owners through a simulated S-1 prospectus.">
+  <meta name="theme-color" content="#1B2A4A">
+  <meta name="color-scheme" content="light">
+
+  <!--
+    Content Security Policy.
+    Scripts are limited to this origin plus the pinned CDNs used for PDF
+    generation; those files are additionally pinned by Subresource Integrity
+    hash in pdf-generator.js. Note that frame-ancestors is ignored in a <meta>
+    CSP — set it as a real response header if this ever moves to a host that
+    can send headers (GitHub Pages cannot).
+  -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net https://unpkg.com https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'">
+  <meta name="referrer" content="no-referrer">
+
   <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+
+  <noscript>
+    <div class="noscript-warning">
+      This exercise needs JavaScript enabled. Everything runs locally in your browser —
+      no data is ever sent to a server.
+    </div>
+  </noscript>
+
+  <a href="#main-content" class="skip-link">Skip to content</a>
 
   <!-- ═══════════════════ HEADER ═══════════════════ -->
   <header id="app-header" class="hidden">
     <div class="header-inner">
       <div class="header-left">
         <h1 class="header-title">The Investor's Lens</h1>
-        <span class="header-divider">|</span>
+        <span class="header-divider" aria-hidden="true">|</span>
         <span class="header-subtitle" id="header-firm-name"></span>
       </div>
       <div class="header-right">
-        <button id="btn-save-header" class="btn btn-outline btn-sm" title="Save Progress">
-          <span class="save-icon">&#128190;</span> Save
+        <span class="save-status" id="save-status" aria-live="polite"></span>
+        <button id="btn-export" class="btn btn-outline btn-sm" title="Download a backup file of all your answers">
+          <span aria-hidden="true">&#8681;</span><span class="btn-label">Backup</span>
+        </button>
+        <button id="btn-import" class="btn btn-outline btn-sm" title="Restore your answers from a backup file">
+          <span aria-hidden="true">&#8679;</span><span class="btn-label">Restore</span>
+        </button>
+        <button id="btn-save-header" class="btn btn-outline btn-sm" title="Save progress">
+          <span aria-hidden="true">&#128190;</span><span class="btn-label">Save</span>
         </button>
       </div>
     </div>
     <!-- Progress bar -->
-    <div class="progress-track">
+    <div class="progress-track" id="progress-track" role="progressbar"
+         aria-label="Exercise completion" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
       <div class="progress-fill" id="progress-fill"></div>
     </div>
   </header>
 
+  <!-- File picker used by the Restore button -->
+  <input type="file" id="input-import-file" accept="application/json,.json" class="visually-hidden" tabindex="-1">
+
   <!-- ═══════════════════ SIDEBAR ═══════════════════ -->
-  <nav id="sidebar" class="hidden">
-    <button id="sidebar-toggle" class="sidebar-toggle" aria-label="Toggle sidebar">&#9776;</button>
+  <nav id="sidebar" class="hidden" aria-label="Module navigation">
+    <button id="sidebar-toggle" class="sidebar-toggle" aria-label="Toggle module navigation" aria-expanded="false">&#9776;</button>
     <div class="sidebar-inner" id="sidebar-inner">
       <ul id="sidebar-list" class="sidebar-list"></ul>
       <div class="sidebar-footer">
-        <button id="btn-start-over" class="btn btn-text btn-sm">Start Over</button>
+        <button id="btn-start-over" class="btn btn-text btn-sm">Erase all my data</button>
       </div>
     </div>
   </nav>
 
   <!-- ═══════════════════ MAIN CONTENT ═══════════════════ -->
   <main id="main-content">
+
+    <!-- Shown only if the browser refuses to persist data -->
+    <div id="storage-warning" class="storage-warning hidden" role="alert"></div>
 
     <!-- Landing page -->
     <section id="page-landing" class="page">
@@ -54,33 +93,42 @@
         <p class="landing-desc">
           Walk through a simulated S-1 prospectus — the document every public company files with the SEC.
           You'll examine your firm through nine critical lenses that investors use to evaluate a business.
-          No data leaves your browser.
         </p>
         <div class="landing-form">
           <div class="field-group">
             <label for="input-firm-name">Firm Name</label>
-            <input type="text" id="input-firm-name" placeholder="e.g. Smith & Associates LLP" autocomplete="organization">
+            <input type="text" id="input-firm-name" placeholder="e.g. Smith &amp; Associates LLP" autocomplete="organization" maxlength="200">
           </div>
           <div class="field-group">
             <label for="input-user-name">Your Name</label>
-            <input type="text" id="input-user-name" placeholder="e.g. Jane Smith" autocomplete="name">
+            <input type="text" id="input-user-name" placeholder="e.g. Jane Smith" autocomplete="name" maxlength="200">
           </div>
           <button id="btn-begin" class="btn btn-primary btn-lg">Begin Your Prospectus</button>
         </div>
+
         <div id="resume-prompt" class="resume-prompt hidden">
           <p>Welcome back. You left off on <strong>Module <span id="resume-module-num"></span></strong>.</p>
           <button id="btn-resume" class="btn btn-gold">Resume Where You Left Off</button>
+        </div>
+
+        <div class="privacy-note">
+          <p>
+            <strong>Your answers stay on this device.</strong> Nothing is uploaded, and there is no
+            account or login. Work is kept in this browser's local storage — which means it is erased
+            if you clear your browsing data, and it is readable by anyone using this browser profile.
+            On a shared computer, download a backup and then erase your data when you finish.
+          </p>
         </div>
       </div>
     </section>
 
     <!-- Module page (dynamically populated) -->
-    <section id="page-module" class="page hidden">
+    <section id="page-module" class="page hidden" tabindex="-1">
       <div class="module-container" id="module-container"></div>
     </section>
 
     <!-- Scorecard page -->
-    <section id="page-scorecard" class="page hidden">
+    <section id="page-scorecard" class="page hidden" tabindex="-1">
       <div class="module-container" id="scorecard-container"></div>
     </section>
 
@@ -96,7 +144,7 @@
   </footer>
 
   <!-- ═══════════════════ TOAST ═══════════════════ -->
-  <div id="toast" class="toast hidden"></div>
+  <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
 
   <!-- Scripts -->
   <script src="modules.js"></script>
