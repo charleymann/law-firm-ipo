@@ -206,6 +206,27 @@
     doc.text("Self-Assessment Scorecard", 60, y);
   }
 
+  // A prefilled row label (e.g. "Total revenue") is template, not an answer, so
+  // a cell only counts as user content when it differs from its prefill value.
+  // Without this a skipped worksheet would print as a page of empty boxes.
+  function tableHasUserContent(field, rows) {
+    if (!Array.isArray(rows)) return false;
+    var prefill = field.prefillRows || [];
+    for (var r = 0; r < rows.length; r++) {
+      var row = rows[r];
+      if (!Array.isArray(row)) continue;
+      for (var c = 0; c < row.length; c++) {
+        var val = (row[c] === null || row[c] === undefined) ? "" : String(row[c]).trim();
+        if (val === "") continue;
+        var preRow = prefill[r];
+        var preVal = (preRow && preRow[c] !== null && preRow[c] !== undefined)
+          ? String(preRow[c]).trim() : "";
+        if (val !== preVal) return true;
+      }
+    }
+    return false;
+  }
+
   function checkPageBreak(doc, y, needed) {
     var ph = doc.internal.pageSize.getHeight();
     if (y + needed > ph - 25) {
@@ -297,24 +318,25 @@
         y += 4;
 
         var tableRows = data[field.id];
-        if (!Array.isArray(tableRows) || tableRows.length === 0) {
-          tableRows = field.prefillRows;
-        }
         if (!Array.isArray(tableRows)) tableRows = [];
 
-        // Keep only rows with at least one non-empty cell.
+        // Keep only rows with at least one non-empty cell, but treat a table
+        // the user never touched as unanswered rather than printing its
+        // blank template.
         var filteredRows = [];
-        for (var ri = 0; ri < tableRows.length; ri++) {
-          var row = tableRows[ri];
-          if (!Array.isArray(row)) continue;
-          var hasContent = false;
-          var safeRow = [];
-          for (var ci = 0; ci < row.length; ci++) {
-            var cellVal = (row[ci] !== null && row[ci] !== undefined) ? String(row[ci]) : "";
-            safeRow.push(safeText(cellVal));
-            if (cellVal.trim() !== "") hasContent = true;
+        if (tableHasUserContent(field, tableRows)) {
+          for (var ri = 0; ri < tableRows.length; ri++) {
+            var row = tableRows[ri];
+            if (!Array.isArray(row)) continue;
+            var hasContent = false;
+            var safeRow = [];
+            for (var ci = 0; ci < row.length; ci++) {
+              var cellVal = (row[ci] !== null && row[ci] !== undefined) ? String(row[ci]) : "";
+              safeRow.push(safeText(cellVal));
+              if (cellVal.trim() !== "") hasContent = true;
+            }
+            if (hasContent) filteredRows.push(safeRow);
           }
-          if (hasContent) filteredRows.push(safeRow);
         }
 
         if (filteredRows.length > 0) {
@@ -347,10 +369,10 @@
           }
         } else {
           y += 6;
-          doc.setFontSize(9);
-          doc.setFont("helvetica", "italic");
+          doc.setFontSize(10);
+          doc.setFont("helvetica", "normal");
           setColor(doc, "setTextColor", TEXT_MUTED);
-          doc.text("(no data entered)", 24, y);
+          doc.text("(not completed)", 24, y);
           y += 10;
         }
 
