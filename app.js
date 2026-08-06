@@ -809,6 +809,10 @@
     collectCurrentPageData();
 
     currentView = view;
+    // Drives the landing-only layout: with the header, sidebar and bottom bar
+    // hidden, the space reserved for them has to be reclaimed too.
+    document.body.classList.toggle("is-landing", view === "landing");
+
     elPageLanding.classList.add("hidden");
     elPageModule.classList.add("hidden");
     elPageScorecard.classList.add("hidden");
